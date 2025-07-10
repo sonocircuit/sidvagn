@@ -1,4 +1,4 @@
--- sidvagn v0.0.0 @sonocircuit
+-- sidvagn v0.1.0 @sonocircuit
 -- llllllll.co/t/sidvagn
 --
 --   nisho superlite - as a mod
@@ -868,7 +868,7 @@ local function sidv_grid(x, y, z)
         trig_pattern(x, z)
       elseif seq.active then
         if x > 4 and x < 13 and z == 1 then
-          params:set("key_seq_rate", x - 4)
+          params:set("sidv_key_seq_rate", x - 4)
         end
       end
     end
@@ -1009,7 +1009,7 @@ local function sidv_gridredraw()
       end
     elseif seq.active then
       for x = 1, 8 do
-        gs:led(x + 4, 4, params:get("key_seq_rate") == x and 6 or 1)
+        gs:led(x + 4, 4, params:get("sidv_key_seq_rate") == x and 6 or 1)
       end
     end
   end
@@ -1032,7 +1032,7 @@ local function sidv_gridredraw()
   else
     if seq.active and not trig.edit_mode then
       for x = 1, 8 do
-        gs:led(x + 4, 4, params:get("key_seq_rate") == x and 6 or 1)
+        gs:led(x + 4, 4, params:get("sidv_key_seq_rate") == x and 6 or 1)
       end
     end
     gs:led(16, 5, seq.active and 10 or 4)
