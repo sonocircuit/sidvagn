@@ -1061,10 +1061,10 @@ local function sidv_gridredraw()
   -- keyboard
   local octave = #notes.scale_intervals[notes.active_scale] - 1
   for i = 1, 12 do
-    gs:led(i + 2, 5, gk[i + 2][5].active and 15 or (((i + gk.int_y * 3) % octave) == 1 and 10 or 1))
-    gs:led(i + 2, 6, gk[i + 2][6].active and 15 or (((i + gk.int_y * 2) % octave) == 1 and 10 or 1))
-    gs:led(i + 2, 7, gk[i + 2][7].active and 15 or (((i + gk.int_y) % octave) == 1 and 10 or 1))
-    gs:led(i + 2, 8, gk[i + 2][8].active and 15 or ((i % octave) == 1 and 10 or 1))
+    gs:led(i + 2, 5, gk[i + 2][5].active and 15 or (((i + gk.int_y * 3) % octave) == 1 and 10 or 2))
+    gs:led(i + 2, 6, gk[i + 2][6].active and 15 or (((i + gk.int_y * 2) % octave) == 1 and 10 or 2))
+    gs:led(i + 2, 7, gk[i + 2][7].active and 15 or (((i + gk.int_y) % octave) == 1 and 10 or 2))
+    gs:led(i + 2, 8, gk[i + 2][8].active and 15 or ((i % octave) == 1 and 10 or 2))
   end
   gs:refresh()
 end
