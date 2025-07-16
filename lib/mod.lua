@@ -12,13 +12,15 @@ local mu = require 'musicutil'
 local rf = include 'sidvagn/lib/reflection'
 local nb = include 'sidvagn/lib/nb/lib/nb'
 
+
 -------------------------- variables --------------------------
+
 -- grid
 local gs
 
 -- keyboard
 local gk = {}
-gk.int_y = 4
+gk.int_y = 3
 gk.num_held = 0
 gk.dirty = true
 for x = 1, 16 do
@@ -39,7 +41,7 @@ notes.key_oct = 0
 notes.root_oct = 3
 notes.root_scale = 60
 notes.root_base = 24
-notes.active_scale = 1
+notes.active_scale = 2
 notes.scale = {}
 notes.scale_names = {}
 notes.scale_intervals = {}
@@ -49,25 +51,29 @@ local vel = {}
 vel.baseline = 100
 vel.voice = 100
 vel.hi = 100
-vel.mi = 60
 vel.lo = 40
 vel.res = 0.01
-vel.timer = nil
-vel.rise = 0.1
-vel.fall = 0.1
+vel.rise = 1
+vel.fall = 0.5
 vel.value = 0
 vel.timer = nil
+
+-- modulation
+local mdl = {}
+mdl.res = 0.01
+mdl.rise = 1
+mdl.fall = 0.5
+mdl.value = 0
+mdl.timer = nil
 
 -- sequencer
 local seq = {}
 seq.notes = {}
-seq.prev_notes = {}
 seq.collected = {}
 seq.active = false
 seq.hold = false
 seq.collecting = false
 seq.appending = false
-seq.notes_added = false
 seq.step = 0
 seq.rate = 1/4
 
@@ -134,6 +140,7 @@ end
 
 -------------------------- functions --------------------------
 
+
 -------- scales --------
 local function build_scale()
   notes.root_base = notes.root_scale % 12 + 24
@@ -143,8 +150,8 @@ local function build_scale()
   notes.last = notes_home
 end
 
--------- patterns and events --------
 
+-------- patterns and events --------
 local function event_exec(e, n)
   local octave = (notes.root_oct - e.root) * (#notes.scale_intervals[notes.active_scale] - 1)
   local note_num = notes.scale[util.clamp(e.note + octave, 1, #notes.scale)]
@@ -272,6 +279,33 @@ local function stop_all_patterns()
   end
 end
 
+local function paste_seq_pattern(i)
+  if #seq.notes > 0 then
+    for n = 1, #seq.notes do
+      local s = math.floor((n - 1) * (seq.rate * 64) + 1)
+      local e = math.floor(s + ((seq.rate / 2) * 64))
+      if seq.notes[n] > 0 then
+        if not ptn[i].event[s] then
+          ptn[i].event[s] = {}
+        end
+        if not ptn[i].event[e] then
+          ptn[i].event[e] = {}
+        end
+        local on = {root = notes.root_oct, note = seq.notes[n], vel = vel.voice, action = "note_on"}
+        local off = {root = notes.root_oct, note = seq.notes[n], vel = vel.voice, action = "note_off"}
+        table.insert(ptn[i].event[s], on)
+        table.insert(ptn[i].event[e], off)
+        ptn[i].count = ptn[i].count + 2
+      end
+    end
+    ptn[i].endpoint = #seq.notes * (seq.rate * 64)
+    ptn[i].endpoint_init = ptn[i].endpoint
+    ptn[i].step_max = ptn[i].endpoint
+    ptn[i].manual_length = true
+  end
+end
+
+
 -------- start/stop callback --------
 function clock.transport.start()
   seq.step = 0
@@ -286,31 +320,6 @@ function clock.transport.stop()
   gk.dirty = true
 end
 
-local function paste_seq_pattern(i)
-  if #seq.notes > 0 then
-    for n = 1, #seq.notes do
-      local s = math.floor((n - 1) * (seq.rate * 64) + 1)
-      local e = math.floor(s + ((seq.rate / 2) * 64))
-      if seq.notes[n] > 0 then
-        if not ptn[i].event[s] then
-          ptn[i].event[s] = {}
-        end
-        if not ptn[i].event[e] then
-          ptn[i].event[e] = {}
-        end
-        local on = {root = notes.root_oct, note = seq.notes[n], action = "note_on"}
-        local off = {root = notes.root_oct, note = seq.notes[n], action = "note_off"}
-        table.insert(ptn[i].event[s], on)
-        table.insert(ptn[i].event[e], off)
-        ptn[i].count = ptn[i].count + 2
-      end
-    end
-    ptn[i].endpoint = #seq.notes * (seq.rate * 64)
-    ptn[i].endpoint_init = ptn[i].endpoint
-    ptn[i].step_max = ptn[i].endpoint
-    ptn[i].manual_length = true
-  end
-end
 
 -------- clock coroutines --------
 local function set_pattern_loop(i, focus)
@@ -438,7 +447,6 @@ end
 
 
 -------- velocity modulation --------
-
 local function set_velocity(val)
   vel.voice = util.linlin(0, 1, vel.baseline, 127, val)
   gk.dirty = true
@@ -462,8 +470,34 @@ local function vl_ramp_down()
   end
 end
 
--------- key repeate and trig reset --------
 
+-------- nb modulation --------
+local function set_modulation(val)
+  local player = params:lookup_param("sidv_nb_player"):get_player()
+  player:modulate(val)
+  gk.dirty = true
+end
+
+local function mdl_ramp_up()
+  local inc = (1 - mdl.value) / (mdl.rise / mdl.res)
+  while mdl.value < 1 do
+    mdl.value = util.clamp(mdl.value + inc, 0, 1)
+    set_modulation(mdl.value)
+    clock.sleep(mdl.res)
+  end
+end
+
+local function mdl_ramp_down()
+  local inc = mdl.value / (mdl.fall / mdl.res)
+  while mdl.value > 0 do
+    mdl.value = util.clamp(mdl.value - inc, 0, 1)
+    set_modulation(mdl.value)
+    clock.sleep(mdl.res)
+  end
+end
+
+
+-------- key repeate and trig reset --------
 local function set_trig_start()
   trig.lock = false
   trig.step = 0
@@ -502,6 +536,7 @@ local function set_repeat_rate(k1, k2, k3, k4, keypress)
   if not rep.active then trig.lock = false end
 end
 
+
 -------- utilities --------
 local function dont_panic()
   if #notes.held > 0 then
@@ -526,6 +561,7 @@ end
 
 -------------------------- grid interface --------------------------
 
+-------- gridkey functions --------
 local function pattern_keys(i)
   if ptn.focus ~= i and num_rec_enabled() == 0 then
     ptn.focus = i
@@ -660,21 +696,17 @@ local function add_note(x, y, note)
   -- keep track of held notes
   gk[x][y].note = note
   table.insert(notes.held, note)
-  -- collect or append notes
-  if seq.collecting and not seq.appending then
+  -- collect notes
+  if seq.collecting then
     table.insert(seq.collected, note)
-  elseif seq.appending and not seq.collecting then
-    table.insert(seq.notes, note)
-    seq.notes_added = true
   end
   -- insert notes
-  if seq.active and not (seq.collecting or seq.appending) then
+  if seq.active and not seq.collecting then
     if gk.num_held == 1 then
       reset_trig_step()
       if seq.hold then seq.notes = {} end
     end
     table.insert(seq.notes, note)
-    seq.prev_notes = {table.unpack(seq.notes)}
   end
   -- play notes
   if not seq.active then
@@ -683,13 +715,13 @@ local function add_note(x, y, note)
         reset_trig_step()
       end
     else
-      local e = {root = notes.root_oct, note = note, action = "note_on"} event(e)
+      local e = {root = notes.root_oct, note = note, vel = vel.voice, action = "note_on"} event(e)
     end
   end
 end
 
 local function remove_note(x, y)
-  if seq.active and not (seq.collecting or seq.appending or seq.hold) then
+  if seq.active and not (seq.collecting or seq.hold) then
     table.remove(seq.notes, tab.key(notes.held, gk[x][y].note))
   end
   if not (seq.active or rep.active) then
@@ -753,28 +785,16 @@ local function key_events(y, z)
       end
     elseif y == 6 then
       seq.collecting = z == 1 and true or false
-      if z == 1 and seq.notes_added then
-        seq.notes_added = false
-        seq.prev_notes = {table.unpack(seq.notes)}
-      end
       if z == 0 and #seq.collected > 0 then
         seq.step = 0
         reset_trig_step()
         seq.notes = {table.unpack(seq.collected)}
-        seq.prev_notes = {table.unpack(seq.collected)}
       else
         seq.collected = {}
       end
       dirtyscreen = true
     elseif y == 7 then
       seq.appending = z == 1 and true or false
-      if z == 0 and seq.notes_added then
-        seq.notes = {table.unpack(seq.prev_notes)}
-        seq.notes_added = false
-        if seq.step >= #seq.prev_notes then
-          seq.step = 0
-        end
-      end
     elseif y == 8 and z == 1 then
       seq.hold = not seq.hold
       if not seq.hold then
@@ -784,6 +804,8 @@ local function key_events(y, z)
   end
 end
 
+
+-------- gridkey  --------
 local function sidv_grid(x, y, z)
   if y == 1 then
     if x == 1 then
@@ -883,11 +905,13 @@ local function sidv_grid(x, y, z)
       end
     elseif x == 2 then
       if y == 5 then 
+        if mdl.timer ~= nil then
+          clock.cancel(mdl.timer)
+        end
+        mdl.timer = clock.run(z == 1 and mdl_ramp_up or mdl_ramp_down)
+      elseif y == 6 then 
         vel.baseline = vel.hi
         vel.voice = vel.hi
-      elseif y == 6 then 
-        vel.baseline = vel.mi
-        vel.voice = vel.mi
       elseif y == 7 then
         vel.baseline = vel.lo
         vel.voice = vel.lo
@@ -901,11 +925,8 @@ local function sidv_grid(x, y, z)
       scale_grid(x, y, z)
     elseif x == 15 then
       if (y == 6 or y == 7) and z == 1 then
-        if seq.collecting and not seq.appending then
+        if seq.collecting then
           table.insert(seq.collected, 0)
-        elseif seq.appending and not seq.collecting then
-          table.insert(seq.notes, 0)
-          seq.notes_added = true
         end
       elseif y == 8 and z == 1 then
         if rep.mode then
@@ -925,6 +946,8 @@ local function sidv_grid(x, y, z)
   gk.dirty = true
 end 
 
+
+-------- gridredraw  --------
 local function sidv_gridredraw()
   gs:all(0)
   -- pattern options
@@ -1019,8 +1042,8 @@ local function sidv_gridredraw()
   gs:led(1, 7, 8 + notes.key_oct * 2)
   gs:led(1, 8, 8 - notes.key_oct * 2)
   -- afterfouch, modwheel, pitchbend
-  gs:led(2, 5, vel.baseline == vel.hi and 2 or 0)
-  gs:led(2, 6, vel.baseline == vel.mi and 2 or 0)
+  gs:led(2, 5, math.floor(mdl.value * 15))
+  gs:led(2, 6, vel.baseline == vel.hi and 2 or 0)
   gs:led(2, 7, vel.baseline == vel.lo and 2 or 0)
   gs:led(2, 8, math.floor(vel.value * 15))
   -- key events
@@ -1030,11 +1053,6 @@ local function sidv_gridredraw()
     end
     gs:led(15, 8, rep.hold and viz.key_slow or 0)
   else
-    if seq.active and not trig.edit_mode then
-      for x = 1, 8 do
-        gs:led(x + 4, 4, params:get("sidv_key_seq_rate") == x and 6 or 1)
-      end
-    end
     gs:led(16, 5, seq.active and 10 or 4)
     gs:led(16, 6, seq.collecting and 10 or 2)
     gs:led(16, 7, seq.appending and 10 or 2)
@@ -1058,7 +1076,9 @@ local function hardware_redraw()
   end
 end
 
+
 --------------------- init -----------------------
+
 local function init_params()
   
   notes.scale_names = {}
@@ -1071,7 +1091,7 @@ local function init_params()
     notes.scale_intervals[i] = {table.unpack(mu.SCALES[i].intervals)}
   end
   
-  params:add_group("sidvagn_params", "sidvagn", 18)
+  params:add_group("sidvagn_params", "sidvagn", 20)
 
   params:add_separator("sidv_scale_params", "scale")
   params:add_option("sidv_scale", "scale", notes.scale_names, 2)
@@ -1093,15 +1113,12 @@ local function init_params()
   params:add_option("sidv_key_seq_rate", "sequencer rate", {"1/4", "3/16", "1/6", "1/8", "3/32", "1/12", "1/16","1/32"}, 7)
   params:set_action("sidv_key_seq_rate", function(idx) seq.rate = quant.value[idx] * 4 end)
 
-  params:add_option("sidv_trig_reset_mode", "trig reset mode", {"manual", "lock", "beat", "bar"}, 4)
+  params:add_option("sidv_trig_reset_mode", "trig reset mode", {"manual", "lock", "beat", "bar"}, 1)
   params:set_action("sidv_trig_reset_mode", function(mode) trig.reset_mode = mode end)
 
   params:add_separator("sidv_velocity_params", "velocity")
   params:add_number("sidv_note_velocity_high", "high", 80, 127, 100)
   params:set_action("sidv_note_velocity_high", function(val) vel.hi = val end)
-
-  params:add_number("sidv_note_velocity_mid", "mid", 40, 80, 60)
-  params:set_action("sidv_note_velocity_mid", function(val) vel.mi = val end)
 
   params:add_number("sidv_note_velocity_low", "low", 1, 40, 40)
   params:set_action("sidv_note_velocity_low", function(val) vel.lo = val end)
@@ -1112,12 +1129,19 @@ local function init_params()
   params:add_control("sidv_velocity_fall", "fall time", controlspec.new(0.1, 10, "lin", 0.1, 0.5), function(param) return round_form(param:get(), 0.1, "s") end)
   params:set_action("sidv_velocity_fall", function(val) vel.fall = val end)
 
+  params:add_separator("sidv_modulation_params", "modulation")
+  params:add_control("sidv_modultaion_rise", "rise time", controlspec.new(0.1, 10, "lin", 0.1, 1), function(param) return round_form(param:get(), 0.1, "s") end)
+  params:set_action("sidv_modultaion_rise", function(val) mdl.rise = val end)
+
+  params:add_control("sidv_modulation_fall", "fall time", controlspec.new(0.1, 10, "lin", 0.1, 0.5), function(param) return round_form(param:get(), 0.1, "s") end)
+  params:set_action("sidv_modulation_fall", function(val) mdl.fall = val end)
+
   params:add_separator("sidv_voice_params", "voice")
   nb:init()
   nb:add_param("sidv_nb_player", "nb player")
   nb:add_player_params()
 
-  params:bang()
+  build_scale()
 end
 
 local function init_clocks()
@@ -1137,15 +1161,26 @@ local function init_grid()
   gs.key = sidv_grid
 end
 
-
--------------------------- mod stuff --------------------------
-
-md.hook.register("script_post_init", "sidvagn_post_init", function()
+local function sidv_init()
   init_grid()
   init_params()
   init_clocks()
-end)
+end
 
-md.hook.register("script_post_cleanup", "sidvagn_post_cleanup", function()
+local function sidv_cleanup()
   dont_panic()
-end)
+  if ptn ~= nil then
+    for i = 1, 8 do
+      ptn[i]:clear()
+    end
+  end
+  if trig ~= nil then
+    trig.pattern = {1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1}
+  end
+end
+
+
+-------------------------- mod hooks --------------------------
+
+md.hook.register("script_post_init", "sidvagn_post_init", sidv_init)
+md.hook.register("script_post_cleanup", "sidvagn_post_cleanup", sidv_cleanup)
