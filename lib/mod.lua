@@ -1100,7 +1100,7 @@ local function init_params()
   params:add_number("sidv_root_note", "root note", 24, 84, 60, function(param) return mu.note_num_to_name(param:get(), true) end)
   params:set_action("sidv_root_note", function(val) notes.root_scale = val build_scale() gk.dirty = true end)
 
-  params:add_number("sidv_scale_keys_y", "key interval [y]", 1, 6, 4)
+  params:add_number("sidv_scale_keys_y", "key interval [y]", 2, 8, 4)
   params:set_action("sidv_scale_keys_y", function(val) gk.int_y = val - 1 gk.dirty = true end)
 
   params:add_separator("sidv_timing_params", "timing")
