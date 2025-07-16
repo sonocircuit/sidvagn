@@ -180,6 +180,7 @@ function reflection:clear()
   self.step_max = 0
   self.position = 1
   self.manual_length = false
+  self.looping = false
 end
 
 --- watch
