@@ -1,6 +1,6 @@
 # sidvagn
 
-sidvagn is a slimmed down version of nisho as a mod. connect a sidecar grid to port 2 and use it beside any other script.
+sidvagn is a slimmed down version of nisho as a mod. connect a sidecar grid to **port 2** and use it beside any other script.
 
 this norns mod contains:
 - an isometric keyboard,
@@ -10,6 +10,9 @@ this norns mod contains:
 
 the output is powered by nb. install any other nb mods for more than midi.
 
-video tutorial in the works... here's the grid layout for now.
+## documentation
 
+- important: connect sidecar grid to port 2 under `SYSTEM > DEVICES > GRID`
+- video tutorial: [sidvagn - overview](https://www.youtube.com/watch?v=rFfKduXWIq4)
+- grid layout and shortcuts:
 ![GRIDLAYOUT](https://github.com/sonocircuit/sidvagn/blob/main/doc/sidvagn_grid_layout.png)
