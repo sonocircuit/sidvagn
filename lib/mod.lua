@@ -566,18 +566,23 @@ end
 
 
 -------- utilities --------
-local function dont_panic()
+local function stop_all_notes(i)
   if #notes.held > 0 then
     for _, note in ipairs(notes.held) do
-      local player = params:lookup_param("sidv_nb_player_"..vox.active):get_player()
-      player:note_off(note)
+      local note_num = notes.scale[util.clamp(note, 1, #notes.scale)]
+      local player = params:lookup_param("sidv_nb_player_"..i):get_player()
+      player:note_off(note_num)
     end
+    notes.held = {}
   end
+end
+
+local function dont_panic()
+  stop_all_notes(vox.active)
   for i = 1, 8 do
     clear_active_notes(i)
   end
-  nb:stop_all() -- should suffice, but who knows...
-  notes.held = {}
+  nb:stop_all() -- should suffice, but who knows... pretty overkill.
 end
 
 local function round_form(param, quant, form)
@@ -906,6 +911,7 @@ local function sidv_grid(x, y, z)
     elseif x == 3 then
       vox.select = z == 1 and true or false
       if z == 1 then
+        stop_all_notes(vox.active)
         vox.active = vox.active == 1 and 2 or 1
       end
     elseif x > 3 and x < 14 then
