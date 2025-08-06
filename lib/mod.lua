@@ -1102,10 +1102,10 @@ local function init_params()
   params:set_action("sidv_trig_reset_mode", function(mode) trig.reset_mode = mode end)
 
   params:add_separator("sidv_velocity_params", "velocity")
-  params:add_number("sidv_note_velocity_high", "high", 80, 127, 100)
+  params:add_number("sidv_note_velocity_high", "high", 65, 127, 100)
   params:set_action("sidv_note_velocity_high", function(val) vel.hi = val end)
 
-  params:add_number("sidv_note_velocity_low", "low", 1, 40, 40)
+  params:add_number("sidv_note_velocity_low", "low", 1, 64, 40)
   params:set_action("sidv_note_velocity_low", function(val) vel.lo = val end)
 
   params:add_control("sidv_velocity_rise", "rise time", controlspec.new(0.1, 10, "lin", 0.1, 1), function(param) return round_form(param:get(), 0.1, "s") end)
