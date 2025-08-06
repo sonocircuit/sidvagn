@@ -1,4 +1,4 @@
--- sidvagn v0.1.0 @sonocircuit
+-- sidvagn v0.2.0 @sonoCircuit
 -- llllllll.co/t/sidvagn
 --
 --   nisho superlite - as a mod
@@ -9,6 +9,7 @@
 
 local md = require 'core/mods'
 local mu = require 'musicutil'
+local dm = include 'sidvagn/lib/svdrm'
 local rf = include 'sidvagn/lib/reflection'
 local nb = include 'sidvagn/lib/nb/lib/nb'
 
@@ -31,6 +32,16 @@ for x = 1, 16 do
     gk[x][y].note = 0
   end
 end
+
+-- active voice
+local vox = {}
+vox.active = 1
+vox.select = false
+
+-- drmfm
+local drm = {}
+drm.mode = false
+drm.held = {}
 
 -- notes
 local notes = {}
@@ -117,6 +128,10 @@ quant.rate = 1/4
 quant.value = {1/4, 3/16, 1/6, 1/8, 3/32, 1/12, 1/16, 1/32}
 quant.bar = 4
 
+-- events
+local eNOTE = 1
+local eKIT = 2
+
 -- patterns
 local ptn = {}
 ptn.rec_modes = {"queued", "synced", "free"}
@@ -138,14 +153,15 @@ for i = 1, 8 do
 end
 
 
+
 -------------------------- functions --------------------------
 
 
 -------- scales --------
 local function build_scale()
-  notes.root_base = notes.root_scale % 12 + 24
+  notes.root_base = notes.root_scale % 12 + 12
   notes.root_oct = math.floor((notes.root_scale - notes.root_base) / 12)
-  notes.scale = mu.generate_scale_of_length(notes.root_base, notes.active_scale, 50)
+  notes.scale = mu.generate_scale_of_length(notes.root_base, notes.active_scale, 60)
   notes_home = tab.key(notes.scale, notes.root_scale)
   notes.last = notes_home
 end
@@ -153,20 +169,34 @@ end
 
 -------- patterns and events --------
 local function event_exec(e, n)
-  local octave = (notes.root_oct - e.root) * (#notes.scale_intervals[notes.active_scale] - 1)
-  local note_num = notes.scale[util.clamp(e.note + octave, 1, #notes.scale)]
-  if e.action == "note_off" then
-    local player = params:lookup_param("sidv_nb_player"):get_player()
-    player:note_off(note_num)
-    if i ~= nil then
-      table.remove(ptn[i].active_notes, tab.key(ptn[i].active_notes, note_num))
+  if e.t == eNOTE then
+    local octave = (notes.root_oct - e.root) * (#notes.scale_intervals[notes.active_scale] - 1)
+    local note_num = notes.scale[util.clamp(e.note + octave, 1, #notes.scale)]
+    if e.action == "note_off" then
+      local player = params:lookup_param("sidv_nb_player_"..e.i):get_player()
+      player:note_off(note_num)
+      if n ~= nil then
+        table.remove(ptn[n].active_notes[e.i], tab.key(ptn[n].active_notes[e.i], note_num))
+      end
+    elseif e.action == "note_on" then
+      local vel = util.linlin(0, 127, 0, 1, e.vel)
+      local player = params:lookup_param("sidv_nb_player_"..e.i):get_player()
+      player:note_on(note_num, vel)
+      if n ~= nil then
+        table.insert(ptn[n].active_notes[e.i], note_num)
+      end
     end
-  elseif e.action == "note_on" then
-    local vel = util.linlin(0, 127, 0, 1, (e.vel or vel.voice))
-    local player = params:lookup_param("sidv_nb_player"):get_player()
-    player:note_on(note_num, vel)
-    if i ~= nil then
-      table.insert(ptn[i].active_notes, note_num)
+  elseif e.t == eKIT then
+    dm.trig(e.i, e.vel)
+    if drm.mode then
+      local x = e.i < 5 and e.i + 3 or e.i + 5
+      gk[x][3].active = true
+      gk.dirty = true
+      clock.run(function()
+        clock.sleep(1/30)
+        gk[x][3].active = false
+        gk.dirty = true
+      end)
     end
   end
 end
@@ -200,12 +230,14 @@ local function event_q_clock()
 end
 
 local function clear_active_notes(i)
-  if #ptn[i].active_notes > 0 and ptn[i].endpoint > 0 then
-    for _, note in ipairs(ptn[i].active_notes) do
-      local player = params:lookup_param("sidv_nb_player"):get_player()
-      player:note_off(note)
+  for voice = 1, 2 do
+    if #ptn[i].active_notes[voice] > 0 and ptn[i].endpoint > 0 then
+      for _, note in ipairs(ptn[i].active_notes[voice]) do
+        local player = params:lookup_param("sidv_nb_player_"..voice):get_player()
+        player:note_off(note)
+      end
+      ptn[i].active_notes[voice] = {}
     end
-    ptn[i].active_notes = {}
   end
 end
 
@@ -235,7 +267,7 @@ local function catch_held_notes(i, action)
     else
       local s = ptn[i].step
       for n, v in ipairs(notes.held) do
-        local e = {root = notes.root_oct, note = v, vel = vel.voice, action = action}
+        local e = {t = eNOTE, i = vox.active, root = notes.root_oct, note = v, vel = vel.voice, action = action}
         ptn[i]:watch(e, s)
       end
     end
@@ -251,6 +283,10 @@ for i = 1, 8 do
   ptn[i].end_of_rec_callback = function() catch_held_notes(i, "note_off") end
   ptn[i].end_callback = function() clear_active_notes(i) gk.dirty = true end
   ptn[i].step_callback = function() track_pattern_pos(i) end
+  ptn[i].active_notes = {}
+  for voice = 1, 2 do
+    ptn[i].active_notes[voice] = {}
+  end
 end
 
 local function num_rec_enabled()
@@ -305,6 +341,22 @@ local function paste_seq_pattern(i)
   end
 end
 
+
+-------- start/stop callback --------
+--[[
+function clock.transport.start()
+  seq.step = 0
+  trig.step = 0
+end
+
+function clock.transport.stop()
+  stop_all_patterns()
+  dont_panic()
+  seq.active = false
+  seq.step = 0
+  gk.dirty = true
+end
+]]
 
 -------- clock coroutines --------
 local function set_pattern_loop(i, focus)
@@ -396,10 +448,10 @@ local function run_seq()
         seq.step = seq.step + 1
         if seq.notes[seq.step] > 0 then
           local current_note = seq.notes[seq.step]
-          local e = {root = notes.root_oct, note = current_note, vel = vel.voice, action = "note_on"} event(e)
+          local e = {t = eNOTE, i = vox.active, root = notes.root_oct, note = current_note, vel = vel.voice, action = "note_on"} event(e)
           clock.run(function()
             clock.sync(seq.rate / 2)
-            local e = {root = notes.root_oct, note = current_note, action = "note_off"} event(e)
+            local e = {t = eNOTE, i = vox.active, root = notes.root_oct, note = current_note, action = "note_off"} event(e)
           end)
         end
       end
@@ -415,13 +467,20 @@ local function run_keyrepeat()
       if trig.step >= trig.step_max then trig.step = 0 end
       trig.step = trig.step + 1
       if trig.pattern[trig.step] == 1 then
+        -- notes
         if #notes.held > 0 then
           for _, v in ipairs(notes.held) do
-            local e = {root = notes.root_oct, note = v, vel = vel.voice, action = "note_on"} event(e)
+            local e = {t = eNOTE, i = vox.active, root = notes.root_oct, note = v, vel = vel.voice, action = "note_on"} event(e)
             clock.run(function()
               clock.sync(rep.rate / 2)
-              local e = {root = notes.root_oct, note = v, action = "note_off"} event(e)
+              local e = {t = eNOTE, i = vox.active, root = notes.root_oct, note = v, action = "note_off"} event(e)
             end)
+          end
+        end
+        -- kit
+        if #drm.held > 0 then
+          for _, v in ipairs(drm.held) do
+            local e = {t = eKIT, i = v, vel = vel.voice} event(e)
           end
         end
       end
@@ -458,7 +517,7 @@ end
 
 -------- nb modulation --------
 local function set_modulation(val)
-  local player = params:lookup_param("sidv_nb_player"):get_player()
+  local player = params:lookup_param("sidv_nb_player_"..vox.active):get_player()
   player:modulate(val)
   gk.dirty = true
 end
@@ -526,14 +585,12 @@ end
 local function dont_panic()
   if #notes.held > 0 then
     for _, note in ipairs(notes.held) do
-      local player = params:lookup_param("sidv_nb_player"):get_player()
+      local player = params:lookup_param("sidv_nb_player_"..vox.active):get_player()
       player:note_off(note)
     end
   end
   for i = 1, 8 do
-    if ptn[i].play == 1 then
-      clear_active_notes(i)
-    end
+    clear_active_notes(i)
   end
   nb:stop_all() -- should suffice, but who knows...
   notes.held = {}
@@ -700,7 +757,7 @@ local function add_note(x, y, note)
         reset_trig_step()
       end
     else
-      local e = {root = notes.root_oct, note = note, vel = vel.voice, action = "note_on"} event(e)
+      local e = {t = eNOTE, i = vox.active, root = notes.root_oct, note = note, vel = vel.voice, action = "note_on"} event(e)
     end
   end
 end
@@ -710,7 +767,7 @@ local function remove_note(x, y)
     table.remove(seq.notes, tab.key(notes.held, gk[x][y].note))
   end
   if not (seq.active or rep.active) then
-    local e = {root = notes.root_oct, note = gk[x][y].note, action = "note_off"} event(e)
+    local e = {t = eNOTE, i = vox.active, root = notes.root_oct, note = gk[x][y].note, action = "note_off"} event(e)
   end
   table.remove(notes.held, tab.key(notes.held, gk[x][y].note))
 end
@@ -732,6 +789,24 @@ local function int_grid(x, y, z)
     end
   else
     remove_note(x, y)
+  end
+end
+
+local function kit_grid(x, z)
+  if (x > 3 and x < 8) or (x > 9 and x < 14) then
+    local kit_voice = x < 8 and x - 3 or x - 5
+    if z == 1 then
+      if not rep.active then
+        local e = {t = eKIT, i = kit_voice, vel = vel.voice} event(e)
+      end
+      table.insert(drm.held, kit_voice)
+    else
+      table.remove(drm.held, tab.key(drm.held, kit_voice))
+    end
+  elseif x == 8 or x == 9 then
+    local action = z == 1 and "on" or "off"
+    local slot = x - 7
+    dm.drmf_perf(action, slot, quant.bar)
   end
 end
 
@@ -844,8 +919,19 @@ local function sidv_grid(x, y, z)
       set_metronome(viz.metro and "off" or "on")
     elseif x == 2 and z == 1 then
       quant.active = not quant.active
+    elseif x == 3 then
+      vox.select = z == 1 and true or false
+      if z == 1 then
+        vox.active = vox.active == 1 and 2 or 1
+      end
     elseif x > 3 and x < 14 then
-      int_grid(x, y, z)
+      if drm.mode then
+        kit_grid(x, z)
+      else
+        int_grid(x, y, z)
+      end
+    elseif x == 14 and z == 1 then
+      drm.mode = not drm.mode
     elseif x == 15 and z == 1 then
       trig.edit_mode = not trig.edit_mode
     elseif x == 16 and z == 1 then
@@ -992,13 +1078,24 @@ local function sidv_gridredraw()
     gs:led(1, 3, 3)
   end
   gs:led(2, 3, quant.active and 8 or 4)
-  -- int grid
-  local cntpress = (gk[8][3].active or gk[9][3].active) and 15 or 1
-  gs:led(8, 3, cntpress)
-  gs:led(9, 3, cntpress)
-  for i = 1, 4 do
-    gs:led(i + 3, 3, gk[i + 3][3].active and 15 or (12 - i * 2)) -- intervals dec
-    gs:led(i + 9, 3, gk[i + 9][3].active and 15 or (2 + i * 2)) -- intervals inc
+  -- int/kit grid
+  if drm.mode then
+    local slot = params:get("drmfm_perf_slot")
+    local perf = math.floor(params:get("drmfm_perf_amt") * 15)
+    gs:led(8, 3, vox.select and (vox.active == 1 and 15 or 0) or (slot == 1 and perf or 0))
+    gs:led(9, 3, vox.select and (vox.active == 2 and 15 or 0) or (slot == 2 and perf or 0))
+    for i = 1, 4 do
+      gs:led(i + 3, 3, gk[i + 3][3].active and 15 or 4)
+      gs:led(i + 9, 3, gk[i + 9][3].active and 15 or 4)
+    end
+  else
+    local cntpress = (gk[8][3].active or gk[9][3].active) and 15 or 1
+    gs:led(8, 3, vox.select and (vox.active == 1 and 15 or 0) or cntpress)
+    gs:led(9, 3, vox.select and (vox.active == 2 and 15 or 0) or cntpress)
+    for i = 1, 4 do
+      gs:led(i + 3, 3, gk[i + 3][3].active and 15 or (12 - i * 2)) -- intervals dec
+      gs:led(i + 9, 3, gk[i + 9][3].active and 15 or (2 + i * 2)) -- intervals inc
+    end
   end
   -- trig edit and seq/keyrep
   gs:led(15, 3, trig.edit_mode and 8 or 4)
@@ -1076,7 +1173,13 @@ local function init_params()
     notes.scale_intervals[i] = {table.unpack(mu.SCALES[i].intervals)}
   end
   
-  params:add_group("sidvagn_params", "sidvagn", 20)
+  params:add_separator("sidvagn_params", "sidvagn")
+
+  nb:init()
+  nb:add_param("sidv_nb_player_1", "player [one]")
+  nb:add_param("sidv_nb_player_2", "player [two]")
+
+  params:add_group("sidv_keys_params", "options", 17)
 
   params:add_separator("sidv_scale_params", "scale")
   params:add_option("sidv_scale", "scale", notes.scale_names, 2)
@@ -1121,12 +1224,14 @@ local function init_params()
   params:add_control("sidv_modulation_fall", "fall time", controlspec.new(0.1, 10, "lin", 0.1, 0.5), function(param) return round_form(param:get(), 0.1, "s") end)
   params:set_action("sidv_modulation_fall", function(val) mdl.fall = val end)
 
-  params:add_separator("sidv_voice_params", "voice")
-  nb:init()
-  nb:add_param("sidv_nb_player", "nb player")
+  dm.add_params()
+
   nb:add_player_params()
 
   build_scale()
+
+  params:bang()
+
 end
 
 local function init_clocks()
