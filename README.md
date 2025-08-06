@@ -4,7 +4,7 @@ sidvagn is a slimmed down version of nisho as a mod. connect a sidecar grid to *
 
 this norns mod contains:
 - an isometric keyboard,
-- a interval keystrip,
+- an interval keystrip,
 - a sequencer and key repeat mode with trig patterns,
 - an 8 voice fm drum, and
 - 8 pattern recorders with patterns up to 256 beats of length
