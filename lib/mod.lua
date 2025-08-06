@@ -342,22 +342,6 @@ local function paste_seq_pattern(i)
 end
 
 
--------- start/stop callback --------
---[[
-function clock.transport.start()
-  seq.step = 0
-  trig.step = 0
-end
-
-function clock.transport.stop()
-  stop_all_patterns()
-  dont_panic()
-  seq.active = false
-  seq.step = 0
-  gk.dirty = true
-end
-]]
-
 -------- clock coroutines --------
 local function set_pattern_loop(i, focus)
   clock.sync(1)
