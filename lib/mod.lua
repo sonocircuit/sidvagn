@@ -327,8 +327,8 @@ local function paste_seq_pattern(i)
         if not ptn[i].event[e] then
           ptn[i].event[e] = {}
         end
-        local on = {root = notes.root_oct, note = seq.notes[n], vel = vel.voice, action = "note_on"}
-        local off = {root = notes.root_oct, note = seq.notes[n], vel = vel.voice, action = "note_off"}
+        local on = {t = eNOTE, i = vox.active, root = notes.root_oct, note = seq.notes[n], vel = vel.voice, action = "note_on"}
+        local off = {t = eNOTE, i = vox.active, root = notes.root_oct, note = seq.notes[n], vel = vel.voice, action = "note_off"}
         table.insert(ptn[i].event[s], on)
         table.insert(ptn[i].event[e], off)
         ptn[i].count = ptn[i].count + 2
@@ -1070,8 +1070,8 @@ local function sidv_gridredraw()
   gs:led(2, 3, quant.active and 8 or 4)
   -- int/kit grid
   if drm.mode then
-    local slot = params:get("drmfm_perf_slot")
-    local perf = math.floor(params:get("drmfm_perf_amt") * 15)
+    local slot = dm.get_perfslot()
+    local perf = math.floor(dm.get_perfamt() * 15)
     gs:led(8, 3, vox.select and (vox.active == 1 and 15 or 0) or (slot == 1 and perf or 0))
     gs:led(9, 3, vox.select and (vox.active == 2 and 15 or 0) or (slot == 2 and perf or 0))
     for i = 1, 4 do
@@ -1255,6 +1255,7 @@ local function sidv_cleanup()
     end
   end
   if trig ~= nil then
+    trig.step_max = 16
     trig.pattern = {1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1}
   end
 end
